@@ -466,38 +466,58 @@ create_best_items_plot <- function(item_analysis, item_labels) {
 #' @param data The data frame with item responses
 #' @return Named vector of item labels
 extract_item_labels <- function(data) {
-  # Try to get variable labels from data attributes
-  labels <- attr(data, 'variable.labels')
+  # Try multiple attribute locations where labels might be stored
+  labels <- NULL
   
-  # If no labels exist, create meaningful ones
+  # Method 1: Try data frame level attributes
+  label_attrs <- c('variable.labels', 'labels', 'label')
+  for (attr_name in label_attrs) {
+    labels <- attr(data, attr_name)
+    if (!is.null(labels) && length(labels) > 0) break
+  }
+  
+  # Method 2: If no data frame level labels, check individual column labels
   if (is.null(labels) || length(labels) == 0) {
     col_names <- colnames(data)
+    labels <- character(length(col_names))
+    names(labels) <- col_names
     
-    # For Science dataset, create meaningful labels based on known content
-    if (all(col_names %in% c('Comfort', 'Work', 'Future', 'Benefit'))) {
-      labels <- c(
-        'Comfort' = 'Work to make life comfortable for family',
-        'Work' = 'Work permits development of abilities and talents', 
-        'Future' = 'Work benefits future of society',
-        'Benefit' = 'Work contributes to society'
-      )
-    } else {
-      # For other datasets, create generic but informative labels
-      labels <- paste('Item', col_names, '- Response scale item')
-      names(labels) <- col_names
+    # Extract individual column labels
+    for (col in col_names) {
+      col_label <- attr(data[[col]], 'label')
+      if (!is.null(col_label) && nchar(col_label) > 0) {
+        labels[col] <- col_label
+      } else {
+        labels[col] <- paste('Item', col, '- Response scale item')
+      }
     }
   } else {
-    # Ensure labels have proper names if they exist
+    # Ensure labels have proper names if they exist at data frame level
     if (is.null(names(labels))) {
       names(labels) <- colnames(data)[1:length(labels)]
     }
+  }
+  
+  # Method 3: Special handling for known datasets
+  if (all(names(labels) %in% c('Comfort', 'Work', 'Future', 'Benefit'))) {
+    labels <- c(
+      'Comfort' = 'Work to make life comfortable for family',
+      'Work' = 'Work permits development of abilities and talents', 
+      'Future' = 'Work benefits future of society',
+      'Benefit' = 'Work contributes to society'
+    )
   }
   
   # Ensure we return labels for all columns in data
   if (length(labels) != ncol(data)) {
     missing_cols <- setdiff(colnames(data), names(labels))
     for (col in missing_cols) {
-      labels[col] <- paste('Item', col, '- Response scale item')
+      col_label <- attr(data[[col]], 'label')
+      if (!is.null(col_label) && nchar(col_label) > 0) {
+        labels[col] <- col_label
+      } else {
+        labels[col] <- paste('Item', col, '- Response scale item')
+      }
     }
   }
   
