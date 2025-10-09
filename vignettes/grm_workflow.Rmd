@@ -1,0 +1,283 @@
+---
+title: "Getting Started with the Graded Response Model: A Tutorial Workflow"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with the Graded Response Model: A Tutorial Workflow}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r}
+#| include: false
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+```{r}
+#| label: setup
+library(GRM)
+```
+
+## Introduction
+
+This document demonstrates how to use the GRM package to perform comprehensive Graded Response Model analyses. The package implements the workflow described in Zein & Akhtar (2025) for robust psychometric evaluation of polytomous items.
+
+The Graded Response Model (GRM) is a polytomous Item Response Theory (IRT) model designed for ordered categorical responses. It's particularly useful for analyzing Likert-scale items, attitude surveys, and other ordered response formats.
+
+## Key Functions
+
+The GRM package provides two main functions:
+
+1. **`run_grm()`**: Comprehensive GRM analysis workflow
+2. **`find_best_item_at_theta()`**: Item selection for specific ability levels
+
+## Basic Usage
+
+### Fitting a GRM Model
+
+Here's how to perform a complete GRM analysis:
+
+```{r}
+#| eval: false
+#| label: basic-grm
+# Load example data
+data(Science, package = "mirt")
+
+# Run comprehensive GRM analysis
+results <- run_grm(Science, save_plots = TRUE, output_dir = "grm_output")
+
+# View the structure of results
+str(results, max.level = 1)
+```
+
+The `run_grm()` function performs:
+
+- Initial reliability assessment using omega coefficients
+- Dimensionality assessment via EFA and parallel analysis  
+- GRM model fitting with standard error estimation
+- Model fit evaluation using M2 statistics
+- Item fit assessment
+- Local dependency analysis using Q3 residuals
+- IRT-based reliability calculations
+- Generation of diagnostic plots
+
+### Understanding the Results
+
+The `run_grm()` function returns a comprehensive list containing:
+
+- **`fit`**: The fitted mirt model object
+- **`parameters`**: Item parameters in IRT parameterization
+- **`reliability`**: Multiple reliability estimates (omega, alpha, empirical, marginal)
+- **`model_fit`**: Model fit statistics (M2, RMSEA, CFI, TLI)
+- **`item_fit`**: Item-level fit statistics  
+- **`theta`**: Factor scores with standard errors
+- **`efa`**: Exploratory factor analysis results
+- **`parallel_analysis`**: Parallel analysis for dimensionality
+- **`q3`**: Q3 local dependency matrix
+
+### Finding Optimal Items
+
+The `find_best_item_at_theta()` function identifies which item provides the most information at a specific ability level:
+
+```{r}
+#| eval: false
+#| label: find-items
+# Find best item for average ability students (theta = 0)
+best_avg <- find_best_item_at_theta(results, theta = 0)
+print(best_avg)
+
+# Find best item for high ability students (theta = 2) 
+best_high <- find_best_item_at_theta(results, theta = 2)
+print(best_high)
+
+# Find best item for low ability students (theta = -2)
+best_low <- find_best_item_at_theta(results, theta = -2)
+print(best_low)
+```
+
+This is particularly useful for:
+
+- Computerized adaptive testing (CAT)
+- Identifying discriminating items at specific ability ranges
+- Optimizing test construction
+
+### Adding Item Descriptions
+
+You can provide descriptive text for items:
+
+```{r}
+#| eval: false
+#| label: item-descriptions
+# With item descriptions
+item_labels <- data.frame(
+  item = paste0("Item", 1:4),
+  description = c("Enjoys science", "Likes experiments", 
+                  "Finds science easy", "Science is useful")
+)
+
+best_with_text <- find_best_item_at_theta(results, theta = 0, 
+                                         item_text = item_labels)
+print(best_with_text)
+```
+
+## Advanced Usage
+
+### Multidimensional Analysis
+
+For multidimensional data:
+
+```{r}
+#| eval: false
+#| label: multidimensional
+# Fit 2-factor model
+results_2d <- run_grm(Science, n_factors = 2, save_plots = TRUE)
+```
+
+### Customizing Output
+
+Control plot saving and output directory:
+
+```{r}
+#| eval: false
+#| label: custom-output
+# Analysis without plots
+results_no_plots <- run_grm(Science, save_plots = FALSE)
+
+# Custom output directory
+results_custom <- run_grm(Science, output_dir = "my_analysis")
+```
+
+## Interpreting Results
+
+### Item Parameters
+
+The item parameters include:
+
+- **Discrimination (a)**: How well the item differentiates between ability levels
+- **Difficulty (b)**: Threshold parameters for each response category
+- **Higher discrimination** = better measurement precision
+- **Difficulty spread** indicates the ability range where the item functions best
+
+### Model Fit
+
+Key fit indices:
+
+- **M2**: Chi-square-based fit statistic
+- **RMSEA**: Root Mean Square Error of Approximation (<0.08 acceptable)
+- **CFI**: Comparative Fit Index (>0.95 good)
+- **TLI**: Tucker-Lewis Index (>0.95 good)
+
+### Reliability
+
+Multiple reliability estimates:
+
+- **Omega total**: Model-based reliability
+- **Alpha**: Cronbach's alpha
+- **Empirical**: Based on factor scores
+- **Marginal**: Averaged across ability distribution
+
+## Complete Workflow Example
+
+Here's a comprehensive analysis workflow:
+
+```{r}
+#| eval: false
+#| label: complete-workflow
+# 1. Load data
+data(Science, package = "mirt")
+
+# 2. Run comprehensive analysis
+results <- run_grm(Science, save_plots = TRUE)
+
+# 3. Examine reliability
+cat("Omega total:", round(results$reliability$omega, 3), "\n")
+cat("Cronbach's alpha:", round(results$reliability$alpha, 3), "\n")
+
+# 4. Check model fit
+if (!is.null(results$model_fit)) {
+  print(results$model_fit)
+}
+
+# 5. Find optimal items for different ability levels
+theta_levels <- c(-2, -1, 0, 1, 2)
+for (theta in theta_levels) {
+  best <- find_best_item_at_theta(results, theta = theta)
+  cat("Best item at theta =", theta, ":", best$item, 
+      "(Information =", round(best$information, 3), ")\n")
+}
+
+# 6. Examine plots in output directory
+list.files("grm_output", pattern = "\\.png$")
+```
+
+## Technical Details
+
+The package implements several advanced psychometric procedures:
+
+### Reliability Assessment
+
+Multiple approaches to reliability:
+
+- **Omega coefficients** using hierarchical factor analysis
+- **Empirical reliability** based on factor score standard errors
+- **Marginal reliability** averaged across the ability distribution
+
+### Dimensionality Testing
+
+The package assesses dimensionality through:
+
+- **Exploratory Factor Analysis (EFA)** with minimum residual extraction
+- **Parallel Analysis** comparing observed eigenvalues to random data
+- **Scree plot visualization** for factor retention decisions
+
+### Model Diagnostics
+
+Comprehensive model evaluation includes:
+
+- **Global fit assessment** using M2, RMSEA, CFI, and TLI
+- **Item-level fit statistics** identifying misfitting items
+- **Local dependency analysis** using Q3 residual correlations
+- **Information function plotting** for measurement precision evaluation
+
+## Best Practices
+
+When using the GRM package:
+
+1. **Check assumptions**: Ensure your data are ordinal and unidimensional (or specify appropriate factor structure)
+2. **Examine fit**: Always review model fit indices before interpreting results
+3. **Assess local dependency**: Items should not be overly related after accounting for the latent trait
+4. **Consider sample size**: GRM requires adequate sample size (typically N > 250 for stable estimates)
+5. **Validate results**: Consider cross-validation with independent samples when possible
+
+## Troubleshooting
+
+Common issues and solutions:
+
+- **Convergence problems**: Try different starting values or reduce model complexity
+- **Local dependency**: Consider testlet models or remove redundant items
+- **Poor fit**: Examine item-level diagnostics and consider multidimensional models
+- **Low reliability**: Review item quality and consider additional items
+
+## References
+
+Zein, R. A., & Akhtar, H. (2025). Getting started with the graded response model: An introduction and tutorial in R. *International Journal of Psychology*, 60(1), e13265. https://doi.org/10.1002/ijop.13265
+
+Samejima, F. (1969). Estimation of latent ability using a response pattern of graded scores. *Psychometrika Monograph No. 17*.
+
+Chalmers, R. P. (2012). mirt: A Multidimensional Item Response Theory Package for the R Environment. *Journal of Statistical Software*, 48(6), 1-29.
+
+## Additional Resources
+
+For more details on specific functions:
+
+- `?run_grm` - Complete GRM analysis workflow
+- `?find_best_item_at_theta` - Item selection functionality
+
+The package builds on the excellent `mirt` package by Chalmers (2012) and provides a streamlined workflow for GRM analysis following best practices in the field.
+
+For advanced IRT modeling, users may also consider the `TAM`, `ltm`, and `eRm` packages for specialized applications.
+```
