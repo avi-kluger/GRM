@@ -4,12 +4,14 @@
 \alias{empirical_rxx}
 \title{Calculate empirical reliability}
 \usage{
-empirical_rxx(theta)
+empirical_rxx(theta_scores)
 
-empirical_rxx(theta)
+empirical_rxx(theta_scores)
 }
 \arguments{
-\item{theta}{Matrix of factor scores with SE}
+\item{theta_scores}{Matrix of theta scores and standard errors}
+
+\item{theta}{Matrix with factor scores and SEs}
 }
 \value{
 Empirical reliability estimate

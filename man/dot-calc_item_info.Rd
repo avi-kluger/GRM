@@ -4,18 +4,20 @@
 \alias{.calc_item_info}
 \title{Internal: Numeric item information (robust across mirt versions)}
 \usage{
-.calc_item_info(fit, item_num, theta)
+.calc_item_info(fit, item_index, theta)
 
-.calc_item_info(fit, item_num, theta)
+.calc_item_info(fit, item_index, theta)
 
-.calc_item_info(fit, item_num, theta)
+.calc_item_info(fit, item_index, theta)
 }
 \arguments{
-\item{fit}{mirt model object}
+\item{fit}{Fitted mirt model}
+
+\item{item_index}{Item index}
+
+\item{theta}{Ability level}
 
 \item{item_num}{Item number}
-
-\item{theta}{Theta value}
 }
 \value{
 Numeric information value for the item at theta

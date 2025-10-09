@@ -1,41 +1,18 @@
 #' Perform Complete Graded Response Model Analysis
 #'
-#' A comprehensive wrapper function that fits a Graded Response Model (GRM) using 
-#' the mirt package and conducts a full psychometric analysis including 
-#' dimensionality assessment, reliability analysis, model fit evaluation, 
+#' A comprehensive wrapper function that fits a Graded Response Model (GRM) using
+#' the mirt package and conducts a full psychometric analysis including
+#' dimensionality assessment, reliability analysis, model fit evaluation,
 #' and diagnostic plotting with detailed item analysis and recommendations.
 #'
-#' @param data A data.frame or matrix containing polytomous item responses 
-#'   with cases as rows and items as columns. Missing values are handled 
-#'   automatically by mirt.
-#' @param n_factors Integer specifying the number of factors to extract 
-#'   (default = 1). For unidimensional models, use 1.
-#' @param save_plots Logical indicating whether to save diagnostic plots 
-#'   to disk (default = TRUE). Plots include trace plots, item information, 
-#'   test information, and reliability curves.
-#' @param output_dir Character string specifying the directory where plots 
-#'   should be saved (default = "grm_output"). Directory will be created 
-#'   if it doesn't exist.
-#' @param display_plots Logical indicating whether to display plots in viewer
-#'   (default = TRUE). Works in addition to saving plots to disk.
-#' @param auto_display Logical indicating whether to automatically display
-#'   results to console (default = TRUE). Shows detailed item analysis.
-#'
+#' @param data A data.frame or matrix containing polytomous item responses
+#' @param n_factors Integer specifying the number of factors to extract (default = 1)
+#' @param save_plots Logical indicating whether to save diagnostic plots (default = TRUE)
+#' @param output_dir Character string specifying the directory for plots (default = "grm_output")
+#' @param display_plots Logical indicating whether to display plots (default = TRUE)
+#' @param auto_display Logical indicating whether to display results (default = TRUE)
 #' @return A list of class 'grm_analysis' containing all analysis results
-#'
-#' @examples
-#' \dontrun{
-#' # Basic comprehensive analysis with automatic display
-#' data(Science, package = "mirt")
-#' results <- run_grm(Science)
-#' }
-#'
-#' @references
-#' Zein, R. A., & Akhtar, H. (2025). Getting started with the graded response 
-#' model: An introduction and tutorial in R. International Journal of Psychology, 
-#' 60(1), e13265. \doi{10.1002/ijop.13265}
-#'
-#' @seealso \code{\link[mirt]{mirt}}, \code{\link{find_best_item_at_theta}}
+#' @export
 #' @importFrom stats cor var quantile
 #' @importFrom utils capture.output
 #' @importFrom grDevices png dev.off
@@ -43,114 +20,7 @@
 #' @importFrom graphics abline plot
 #' @import psych
 #' @import ggmirt
-#' @importFrom ggplot2 ggplot aes geom_col scale_fill_manual labs theme_minimal theme element_text geom_hline ggsave
-#'
-#' Create Best Items Visualization Plot
-#' @param item_analysis Data frame with item analysis results
-#' @param item_labels Named vector of item labels
-#' @return ggplot object
-create_best_items_plot <- function(item_analysis, item_labels) {
-  
-  # Create theta range for smooth curves
-  theta_range <- seq(-3, 3, length.out = 100)
-  
-  # Prepare data for plotting with smooth curves
-  plot_data <- data.frame()
-  
-  for(i in 1:nrow(item_analysis)) {
-    item_name <- item_analysis$Item[i]
-    item_label <- paste0(item_name, ": ", item_analysis$Label[i])
-    
-    # Create smooth information curve for this item
-    info_values <- sapply(theta_range, function(theta) {
-      # Approximate information using discrimination parameter
-      a <- item_analysis$Discrimination[i]
-      return(a^2 * 0.25 * exp(-theta^2/4))  # Simplified information function
-    })
-    
-    item_data <- data.frame(
-      Theta = theta_range,
-      Information = info_values,
-      Item = item_name,
-      Label = item_label,
-      stringsAsFactors = FALSE
-    )
-    
-    plot_data <- rbind(plot_data, item_data)
-  }
-  
-  # Add vertical lines data for theta = -2, 0, 2
-  key_thetas <- data.frame(
-    theta_val = c(-2, 0, 2),
-    theta_label = c("θ = -2", "θ = 0", "θ = 2")
-  )
-  
-  # Order items by average discrimination for legend
-  item_order <- item_analysis$Item[order(item_analysis$Discrimination, decreasing = TRUE)]
-  plot_data$Item <- factor(plot_data$Item, levels = item_order)
-  plot_data$Label <- factor(plot_data$Label, levels = paste0(item_order, ": ", item_analysis$Label[match(item_order, item_analysis$Item)]))
-  
-  # Create the plot with item information curves
-  ggplot2::ggplot(plot_data, ggplot2::aes(x = Theta, y = Information, color = Label)) +
-    ggplot2::geom_line(size = 1.2) +
-    ggplot2::geom_vline(data = key_thetas, ggplot2::aes(xintercept = theta_val), 
-                        linetype = "dashed", alpha = 0.7, color = "gray50") +
-    ggplot2::labs(title = "Item Information Functions",
-                  subtitle = "Information provided by each item across ability levels",
-                  x = "Ability Level (θ)",
-                  y = "Item Information",
-                  color = "Items") +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(plot.title = ggplot2::element_text(size = 14, face = "bold"),
-                   plot.subtitle = ggplot2::element_text(size = 12),
-                   legend.position = "right") +
-    ggplot2::scale_x_continuous(breaks = c(-2, -1, 0, 1, 2),
-                                 limits = c(-3, 3))
-}
-#' Extract item labels from data
-#' @param data The data frame with item responses
-#' @return Named vector of item labels
-extract_item_labels <- function(data) {
-  labels <- attr(data, "variable.labels")
-  if (is.null(labels)) {
-    labels <- colnames(data)
-    names(labels) <- colnames(data)
-  }
-  return(labels)
-}
-
-#' Calculate empirical reliability
-#' @param theta Matrix of factor scores with SE
-#' @return Empirical reliability coefficient
-empirical_rxx <- function(theta) {
-  if (ncol(theta) >= 2) {
-    var_true <- var(theta[, 1], na.rm = TRUE)
-    mean_error <- mean(theta[, 2]^2, na.rm = TRUE)
-    return(var_true / (var_true + mean_error))
-  }
-  return(NA)
-}
-
-#' Calculate marginal reliability wrapper
-#' @param fit mirt model object
-#' @return Marginal reliability coefficient
-marginal_rxx <- function(fit) {
-  tryCatch(mirt::marginal_rxx(fit), error = function(e) NA)
-}
-
-#' Calculate item information at specific theta
-#' @param fit mirt model object
-#' @param item_num Item number
-#' @param theta Theta value
-#' @return Item information value
-.calc_item_info <- function(fit, item_num, theta) {
-  tryCatch({
-    info <- mirt::iteminfo(mirt::extract.item(fit, item_num), Theta = matrix(theta))
-    return(as.numeric(info))
-  }, error = function(e) return(0))
-#'
-}
-#' @export
+#' @importFrom ggplot2 ggplot aes geom_line geom_vline labs theme_minimal theme element_text scale_color_manual scale_x_continuous annotate ggsave
 run_grm <- function(data, 
                     n_factors = 1, 
                     save_plots = TRUE, 
@@ -505,22 +375,13 @@ run_grm <- function(data,
       if (save_plots) ggplot2::ggsave(file.path(output_dir, "reliability.png"), p4, width = 10, height = 6)
       if (display_plots) print(p4)
     }, error = function(e) message("   Reliability plot skipped: ", e$message))
-
     # Best items plot - display last to ensure it shows in viewer
     if (exists('item_analysis') && !is.null(item_analysis) && nrow(item_analysis) > 0) {
       tryCatch({
         p5 <- create_best_items_plot(item_analysis, results$item_labels)
         plots_list$best_items_plot <- p5
         if (save_plots) ggplot2::ggsave(file.path(output_dir, "best_items_plot.png"), p5, width = 12, height = 8)
-        # Read and display the saved plot to ensure it shows in viewer
-        if (display_plots && save_plots) {
-          tryCatch({
-            saved_plot <- png::readPNG(file.path(output_dir, "best_items_plot.png"))
-            grid::grid.raster(saved_plot)
-          }, error = function(e) print(p5))
-        } else if (display_plots) {
-          print(p5)
-        }
+        if (display_plots) print(p5)
       }, error = function(e) message("   Best items plot skipped: ", e$message))
     }
 
@@ -539,4 +400,94 @@ run_grm <- function(data,
 
   class(results) <- c("grm_analysis", "list")
   return(results)
+}
+
+#' Create Best Items Visualization Plot
+#' @param item_analysis Data frame with item analysis results
+#' @param item_labels Named vector of item labels
+#' @return ggplot object
+create_best_items_plot <- function(item_analysis, item_labels) {
+  
+  # Get the fitted model from the parent environment
+  fit <- get('fit', envir = parent.frame())
+  
+  # Find the three best items at each theta level
+  best_at_m2 <- item_analysis$Item[which.max(item_analysis$Info_theta_m2)]
+  best_at_0 <- item_analysis$Item[which(item_analysis$Info_theta_0 == max(item_analysis$Info_theta_0[item_analysis$Item != best_at_m2]))]
+  best_at_p2 <- item_analysis$Item[which(item_analysis$Info_theta_p2 == max(item_analysis$Info_theta_p2[!item_analysis$Item %in% c(best_at_m2, best_at_0)]))]
+  
+  # Create theta range for plotting
+  theta_range <- seq(-3, 3, length.out = 200)
+  
+  # Calculate actual item information curves
+  plot_data <- data.frame()
+  selected_items <- c(best_at_m2, best_at_0, best_at_p2)
+  
+  for(i in 1:length(selected_items)) {
+    item_name <- selected_items[i]
+    item_idx <- match(item_name, item_analysis$Item)
+    item_label <- paste0(item_name, ': ', item_analysis$Label[item_idx])
+    
+    # Calculate information using mirt
+    info_values <- sapply(theta_range, function(theta) {
+      tryCatch({
+        mirt::iteminfo(mirt::extract.item(fit, item_idx), Theta = matrix(theta))
+      }, error = function(e) 0)
+    })
+    
+    item_data <- data.frame(
+      Theta = theta_range,
+      Information = as.numeric(info_values),
+      Item = item_name,
+      Label = item_label
+    )
+    plot_data <- rbind(plot_data, item_data)
+  }
+  
+  # Create the plot
+  ggplot2::ggplot(plot_data, ggplot2::aes(x = Theta, y = Information, color = Label)) +
+    ggplot2::geom_line(linewidth = 1.5) +
+    ggplot2::geom_vline(xintercept = c(-2, 0, 2), linetype = 'dashed', alpha = 0.7, color = 'gray50') +
+    ggplot2::labs(title = 'Item Information Functions: Best Items at Different Ability Levels',
+                  subtitle = 'Actual information curves from fitted GRM model',
+                  x = 'Ability Level (θ)',
+                  y = 'Item Information',
+                  color = 'Items') +
+    ggplot2::theme_minimal() +
+    ggplot2::scale_x_continuous(breaks = c(-3, -2, -1, 0, 1, 2, 3), limits = c(-3, 3))
+}
+
+#' Extract item labels from data
+#' @param data The data frame with item responses
+#' @return Named vector of item labels
+extract_item_labels <- function(data) {
+  labels <- attr(data, 'variable.labels')
+  if (is.null(labels)) {
+    labels <- colnames(data)
+    names(labels) <- colnames(data)
+  }
+  return(labels)
+}
+
+#' Calculate item information at specific theta
+#' @param fit Fitted mirt model
+#' @param item_index Item index
+#' @param theta Ability level
+#' @return Item information value
+.calc_item_info <- function(fit, item_index, theta) {
+  tryCatch({
+    mirt::iteminfo(mirt::extract.item(fit, item_index), Theta = matrix(theta))
+  }, error = function(e) 0)
+}
+
+#' Calculate empirical reliability
+#' @param theta_scores Matrix of theta scores and standard errors
+#' @return Empirical reliability coefficient
+empirical_rxx <- function(theta_scores) {
+  if (ncol(theta_scores) < 2) return(NA)
+  theta <- theta_scores[, 1]
+  se <- theta_scores[, 2]
+  var_theta <- var(theta, na.rm = TRUE)
+  mean_se2 <- mean(se^2, na.rm = TRUE)
+  return(var_theta / (var_theta + mean_se2))
 }
