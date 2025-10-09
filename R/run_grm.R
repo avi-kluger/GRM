@@ -62,7 +62,7 @@ run_grm <- function(data,
   
   # Always run default omega (1 factor) as requested
   omega_results <- tryCatch({
-    psych::omega(data, plot = FALSE)  # Default omega only
+    psych::omega(data, plot = display_plots)  # Show plot based on display_plots parameter
   }, error = function(e) {
     warning("Omega analysis failed: ", e$message)
     list(omega.tot = NA, omega_h = NA, alpha = NA)
