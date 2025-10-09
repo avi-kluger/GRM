@@ -191,9 +191,16 @@ run_grm <- function(data,
     names(item_info_p2) <- names(discrimination)
     
     # Create comprehensive item analysis data frame
+    # Create comprehensive item analysis data frame
     item_analysis <- data.frame(
       Item = names(discrimination),
-      Label = results$item_labels[names(discrimination)],
+      Label = sapply(names(discrimination), function(x) {
+        if (x %in% names(results$item_labels)) {
+          results$item_labels[x]
+        } else {
+          paste('Item', x, '- Response scale item')
+        }
+      }),
       Discrimination = discrimination,
       Info_theta_m2 = item_info_m2,
       Info_theta_0 = item_info_0,
