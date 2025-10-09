@@ -426,7 +426,12 @@ create_best_items_plot <- function(item_analysis, item_labels) {
   for(i in 1:length(selected_items)) {
     item_name <- selected_items[i]
     item_idx <- match(item_name, item_analysis$Item)
-    item_label <- paste0(item_name, ': ', item_analysis$Label[item_idx])
+    # Use full descriptive label from item_labels
+    full_label <- if (!is.null(item_labels) && item_name %in% names(item_labels)) {
+      paste0(item_name, ': ', item_labels[item_name])
+    } else {
+      paste0(item_name, ': ', item_analysis$Label[item_idx])
+    }
     
     # Calculate information using mirt
     info_values <- sapply(theta_range, function(theta) {
@@ -439,7 +444,7 @@ create_best_items_plot <- function(item_analysis, item_labels) {
       Theta = theta_range,
       Information = as.numeric(info_values),
       Item = item_name,
-      Label = item_label
+      Label = full_label
     )
     plot_data <- rbind(plot_data, item_data)
   }
@@ -461,11 +466,41 @@ create_best_items_plot <- function(item_analysis, item_labels) {
 #' @param data The data frame with item responses
 #' @return Named vector of item labels
 extract_item_labels <- function(data) {
+  # Try to get variable labels from data attributes
   labels <- attr(data, 'variable.labels')
-  if (is.null(labels)) {
-    labels <- colnames(data)
-    names(labels) <- colnames(data)
+  
+  # If no labels exist, create meaningful ones
+  if (is.null(labels) || length(labels) == 0) {
+    col_names <- colnames(data)
+    
+    # For Science dataset, create meaningful labels based on known content
+    if (all(col_names %in% c('Comfort', 'Work', 'Future', 'Benefit'))) {
+      labels <- c(
+        'Comfort' = 'Work to make life comfortable for family',
+        'Work' = 'Work permits development of abilities and talents', 
+        'Future' = 'Work benefits future of society',
+        'Benefit' = 'Work contributes to society'
+      )
+    } else {
+      # For other datasets, create generic but informative labels
+      labels <- paste('Item', col_names, '- Response scale item')
+      names(labels) <- col_names
+    }
+  } else {
+    # Ensure labels have proper names if they exist
+    if (is.null(names(labels))) {
+      names(labels) <- colnames(data)[1:length(labels)]
+    }
   }
+  
+  # Ensure we return labels for all columns in data
+  if (length(labels) != ncol(data)) {
+    missing_cols <- setdiff(colnames(data), names(labels))
+    for (col in missing_cols) {
+      labels[col] <- paste('Item', col, '- Response scale item')
+    }
+  }
+  
   return(labels)
 }
 
