@@ -391,10 +391,14 @@ tryCatch({
     plot_data <- rbind(plot_data, item_data)
   }
   
+  # Find maximum information value to set consistent Y-axis scale
+  max_info <- max(plot_data$Information, na.rm = TRUE)
+  
   # Create the plot
   p2 <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Theta, y = Information)) +
     ggplot2::geom_line(color = "steelblue", linewidth = 1) +
-    ggplot2::facet_wrap(~Item, scales = "free_y") +
+    ggplot2::facet_wrap(~Item) +
+    ggplot2::scale_y_continuous(limits = c(0, max_info * 1.05)) +
     ggplot2::labs(
       title = "Item Information",
       x = expression(theta),
