@@ -191,7 +191,6 @@ run_grm <- function(data,
     names(item_info_p2) <- names(discrimination)
     
     # Create comprehensive item analysis data frame
-    # Create comprehensive item analysis data frame
     item_analysis <- data.frame(
       Item = names(discrimination),
       Label = sapply(names(discrimination), function(x) {
@@ -348,60 +347,104 @@ run_grm <- function(data,
     message("   Use unidimensional model (n_factors = 1) for item-level recommendations")
   }
   
-  # PLOTTING (only for unidimensional models)
-  if (n_factors == 1) {
-    message("\n7. Saving and Displaying Plots")
-    # Store plots for viewer display
-    plots_list <- list()
+# PLOTTING (only for unidimensional models)
+if (n_factors == 1) {
+  message("\n7. Saving and Displaying Plots")
+  # Store plots for viewer display
+  plots_list <- list()
 
-    tryCatch({
-      p1 <- ggmirt::tracePlot(fit, title = "Item Probability Functions") + 
-        ggplot2::labs(color = "Response Categories")
-      plots_list$trace_plot <- p1
-      if (save_plots) ggplot2::ggsave(file.path(output_dir, "trace_plot.png"), p1, width = 12, height = 8)
-      if (display_plots) print(p1)
-    }, error = function(e) message("   Trace plot skipped: ", e$message))
+tryCatch({
+  p1 <- ggmirt::tracePlot(fit, title = "Item Probability Functions") + 
+    ggplot2::labs(color = "Response Categories")
+  plots_list$trace_plot <- p1
+  if (save_plots) ggplot2::ggsave(file.path(output_dir, "trace_plot.png"), p1, width = 12, height = 8)
+  if (display_plots) print(p1)
+}, error = function(e) message("   Trace plot skipped: ", e$message))
 
-    tryCatch({
-      p2 <- ggmirt::itemInfoPlot(fit, facet = TRUE, title = "Item Information")
-      plots_list$item_info_plot <- p2
-      if (save_plots) ggplot2::ggsave(file.path(output_dir, "item_info.png"), p2, width = 14, height = 10)
-      if (display_plots) print(p2)
-    }, error = function(e) message("   Item info plot skipped: ", e$message))
-
-    tryCatch({
-      p3 <- ggmirt::testInfoPlot(fit, title = "Test Information")
-      plots_list$test_info_plot <- p3
-      if (save_plots) ggplot2::ggsave(file.path(output_dir, "test_info.png"), p3, width = 10, height = 6)
-      if (display_plots) print(p3)
-    }, error = function(e) message("   Test info plot skipped: ", e$message))
-
-    tryCatch({
-      p4 <- ggmirt::conRelPlot(fit, title = "Conditional Reliability")
-      plots_list$reliability_plot <- p4
-      if (save_plots) ggplot2::ggsave(file.path(output_dir, "reliability.png"), p4, width = 10, height = 6)
-      if (display_plots) print(p4)
-    }, error = function(e) message("   Reliability plot skipped: ", e$message))
-    # Best items plot - display last to ensure it shows in viewer
-    if (exists('item_analysis') && !is.null(item_analysis) && nrow(item_analysis) > 0) {
-      tryCatch({
-        p5 <- create_best_items_plot(item_analysis, results$item_labels)
-        plots_list$best_items_plot <- p5
-        if (save_plots) ggplot2::ggsave(file.path(output_dir, "best_items_plot.png"), p5, width = 12, height = 8)
-        if (display_plots) print(p5)
-      }, error = function(e) message("   Best items plot skipped: ", e$message))
+tryCatch({
+  # Create custom item info plot with proper labels
+  item_names <- colnames(data)
+  theta_range <- seq(-4, 4, length.out = 200)
+  
+  # Calculate information for each item
+  plot_data <- data.frame()
+  for (i in seq_along(item_names)) {
+    item_name <- item_names[i]
+    
+    # Get full label
+    if (!is.null(results$item_labels) && item_name %in% names(results$item_labels)) {
+      full_label <- paste0(item_name, ': ', results$item_labels[item_name])
+    } else {
+      full_label <- item_name
     }
-
-    # Store plots for return
-    results$plots <- plots_list
-
-    if (save_plots) {
-      message(sprintf("   Plots saved to %s/", output_dir))
-    }
-  } else {
-    message("\n7. Plots Skipped for Multidimensional Model")
-    message("   Standard ggmirt plots not supported for multidimensional models")
+    
+    # Calculate information across theta range
+    info_values <- sapply(theta_range, function(theta) {
+      mirt::iteminfo(mirt::extract.item(fit, i), Theta = matrix(theta))
+    })
+    
+    item_data <- data.frame(
+      Theta = theta_range,
+      Information = as.numeric(info_values),
+      Item = full_label
+    )
+    plot_data <- rbind(plot_data, item_data)
   }
+  
+  # Create the plot
+  p2 <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Theta, y = Information)) +
+    ggplot2::geom_line(color = "steelblue", linewidth = 1) +
+    ggplot2::facet_wrap(~Item, scales = "free_y") +
+    ggplot2::labs(
+      title = "Item Information",
+      x = expression(theta),
+      y = "Information"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      strip.text = ggplot2::element_text(size = 9),
+      plot.title = ggplot2::element_text(hjust = 0.5)
+    )
+  
+  plots_list$item_info_plot <- p2
+  if (save_plots) ggplot2::ggsave(file.path(output_dir, "item_info.png"), p2, width = 14, height = 10)
+  if (display_plots) print(p2)
+}, error = function(e) message("   Item info plot skipped: ", e$message))
+
+tryCatch({
+  p3 <- ggmirt::testInfoPlot(fit, title = "Test Information")
+    plots_list$test_info_plot <- p3
+    if (save_plots) ggplot2::ggsave(file.path(output_dir, "test_info.png"), p3, width = 10, height = 6)
+    if (display_plots) print(p3)
+  }, error = function(e) message("   Test info plot skipped: ", e$message))
+
+  tryCatch({
+    p4 <- ggmirt::conRelPlot(fit, title = "Conditional Reliability")
+    plots_list$reliability_plot <- p4
+    if (save_plots) ggplot2::ggsave(file.path(output_dir, "reliability.png"), p4, width = 10, height = 6)
+    if (display_plots) print(p4)
+  }, error = function(e) message("   Reliability plot skipped: ", e$message))
+  
+  # Best items plot - display last to ensure it shows in viewer
+  if (exists('item_analysis') && !is.null(item_analysis) && nrow(item_analysis) > 0) {
+    tryCatch({
+      p5 <- create_best_items_plot(item_analysis, results$item_labels)
+      plots_list$best_items_plot <- p5
+      if (save_plots) ggplot2::ggsave(file.path(output_dir, "best_items_plot.png"), p5, width = 12, height = 8)
+      if (display_plots) print(p5)
+    }, error = function(e) message("   Best items plot skipped: ", e$message))
+  }
+
+  # Store plots for return
+  results$plots <- plots_list
+
+  if (save_plots) {
+    message(sprintf("   Plots saved to %s/", output_dir))
+  }
+} else {
+  message("\n7. Plots Skipped for Multidimensional Model")
+  message("   Standard ggmirt plots not supported for multidimensional models")
+}
 
   message("\n=== Analysis Complete ===\n")
 
