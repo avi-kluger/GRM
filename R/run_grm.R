@@ -57,44 +57,6 @@ run_grm <- function(data,
     message("")
   }
   
-  # OMEGA RELIABILITY & FACTOR STRUCTURE - ALWAYS DEFAULT (1 factor)
-  message("0. Initial Reliability & Factor Structure Check")
-  
-  # Always run default omega (1 factor) as requested
-  omega_results <- tryCatch({
-    psych::omega(data, plot = display_plots)  # Show plot based on display_plots parameter
-  }, error = function(e) {
-    warning("Omega analysis failed: ", e$message)
-    list(omega.tot = NA, omega_h = NA, alpha = NA)
-  })
-  
-  results$omega_detailed <- omega_results
-  
-  message(sprintf("   Omega total: %.3f", omega_results$omega.tot))
-  message(sprintf("   Omega hierarchical: %.3f", omega_results$omega_h))
-  message(sprintf("   Alpha: %.3f", omega_results$alpha))
-  
-  # Check if multidimensional structure is likely based on omega_h
-  multidimensional_likely <- !is.na(omega_results$omega_h) && omega_results$omega_h <= 0.50
-  
-  if (multidimensional_likely) {
-    message("\n\033[31m*** RED WARNING: MULTIDIMENSIONAL STRUCTURE LIKELY ***\033[39m")
-    message("\033[31mOmega hierarchical <= 0.50 suggests multidimensional structure.\033[39m")
-    message("\033[31mItem analyses below should be interpreted with CAUTION!\033[39m")
-    message("\033[31mConsider running multidimensional models for proper analysis.\033[39m\n")
-  }
-  
-  # Interpret omega hierarchical
-  if (!is.na(omega_results$omega_h)) {
-    if (omega_results$omega_h > 0.70) {
-      message("   [OK] Strong general factor (omega_h > 0.70) - unidimensional assumption supported\n")
-    } else if (omega_results$omega_h > 0.50) {
-      message("   [MODERATE] Moderate general factor (omega_h > 0.50) - consider multidimensional model\n")
-    } else {
-      message("   [WARNING] Weak general factor (omega_h <= 0.50) - multidimensional structure likely\n")
-    }
-  }
-  
   # DIMENSIONALITY
   message("1. Dimensionality Assessment")
   cor_matrix <- stats::cor(data, method = "spearman", use = "pairwise.complete.obs")
@@ -158,19 +120,14 @@ run_grm <- function(data,
   
   results$reliability <- list(
     empirical = emp_rel,
-    marginal = marg_rel,
-    omega = omega_results$omega.tot,
-    omega_h = omega_results$omega_h,
-    alpha = omega_results$alpha
+    marginal = marg_rel
   )
   
   if (n_factors == 1) {
-    message(sprintf("   Empirical: %.3f | Marginal: %.3f", emp_rel, marg_rel))
+    message(sprintf("   Empirical: %.3f | Marginal: %.3f\n", emp_rel, marg_rel))
   } else {
-    message(sprintf("   Empirical: %.3f | Marginal: Not available (multidimensional)", emp_rel))
+    message(sprintf("   Empirical: %.3f | Marginal: Not available (multidimensional)\n", emp_rel))
   }
-  message(sprintf("   Omega: %.3f | Alpha: %.3f\n", 
-                  omega_results$omega.tot, omega_results$alpha))
   
   # DETAILED ITEM ANALYSIS WITH LABELS AND RECOMMENDATIONS
   if (auto_display && n_factors == 1) {
@@ -323,280 +280,125 @@ run_grm <- function(data,
       for (i in 1:nrow(poor_sorted)) {
         reasons <- c()
         if (poor_sorted$Discrimination[i] < 1.0) reasons <- c(reasons, "Low discrimination")
-        # Safer check for Poor_Fit - handle NA values
         if (!is.na(poor_sorted$Poor_Fit[i]) && poor_sorted$Poor_Fit[i]) reasons <- c(reasons, "Poor model fit")
-        if (poor_sorted$Info_theta_0[i] <= info_25th) {
-          reasons <- c(reasons, "Low information")
-        }
+        if (poor_sorted$Info_theta_0[i] <= info_25th) reasons <- c(reasons, "Low information")
         
-        message(sprintf("%d. %s (%s): a = %.3f, Reasons: %s", 
+        message(sprintf("%d. %s (%s): a = %.3f, Info@theta=0 = %.3f - %s", 
                         i, poor_sorted$Item[i], poor_sorted$Label[i], 
-                        poor_sorted$Discrimination[i], paste(reasons, collapse = ", ")))
+                        poor_sorted$Discrimination[i], poor_sorted$Info_theta_0[i],
+                        paste(reasons, collapse = ", ")))
       }
       results$items_to_discard <- poor_sorted
     } else {
       message("\n** ITEMS TO DISCARD **")
-      message("No items meet discard criteria. All items have acceptable properties.")
+      message("No items meet poor criteria. All items show acceptable psychometric properties.")
       results$items_to_discard <- data.frame()
     }
-    
-  } else if (auto_display && n_factors > 1) {
-    # For multidimensional models, skip detailed item analysis but provide warning
-    message("6. Item Analysis Skipped")
-    message("   Detailed item analysis not available for multidimensional models")
-    message("   Use unidimensional model (n_factors = 1) for item-level recommendations")
   }
   
-# PLOTTING (only for unidimensional models)
-if (n_factors == 1) {
-  message("\n7. Saving and Displaying Plots")
-  # Store plots for viewer display
-  plots_list <- list()
+  # PLOTTING (only for unidimensional models)
+  if (n_factors == 1) {
+    message("\n7. Saving and Displaying Plots")
+    # Store plots for viewer display
+    plots_list <- list()
 
-tryCatch({
-  p1 <- ggmirt::tracePlot(fit, title = "Item Probability Functions") + 
-    ggplot2::labs(color = "Response Categories")
-  plots_list$trace_plot <- p1
-  if (save_plots) ggplot2::ggsave(file.path(output_dir, "trace_plot.png"), p1, width = 12, height = 8)
-  if (display_plots) print(p1)
-}, error = function(e) message("   Trace plot skipped: ", e$message))
-
-tryCatch({
-  # Create custom item info plot with proper labels
-  item_names <- colnames(data)
-  theta_range <- seq(-4, 4, length.out = 200)
-  
-  # Calculate information for each item
-  plot_data <- data.frame()
-  for (i in seq_along(item_names)) {
-    item_name <- item_names[i]
-    
-    # Get full label
-    if (!is.null(results$item_labels) && item_name %in% names(results$item_labels)) {
-      full_label <- paste0(item_name, ': ', results$item_labels[item_name])
-    } else {
-      full_label <- item_name
-    }
-    
-    # Calculate information across theta range
-    info_values <- sapply(theta_range, function(theta) {
-      mirt::iteminfo(mirt::extract.item(fit, i), Theta = matrix(theta))
-    })
-    
-    item_data <- data.frame(
-      Theta = theta_range,
-      Information = as.numeric(info_values),
-      Item = full_label
-    )
-    plot_data <- rbind(plot_data, item_data)
-  }
-  
-  # Find maximum information value to set consistent Y-axis scale
-  max_info <- max(plot_data$Information, na.rm = TRUE)
-  
-  # Create the plot
-  p2 <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Theta, y = Information)) +
-    ggplot2::geom_line(color = "steelblue", linewidth = 1) +
-    ggplot2::facet_wrap(~Item) +
-    ggplot2::scale_y_continuous(limits = c(0, max_info * 1.05)) +
-    ggplot2::labs(
-      title = "Item Information",
-      x = expression(theta),
-      y = "Information"
-    ) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(
-      strip.text = ggplot2::element_text(size = 9),
-      plot.title = ggplot2::element_text(hjust = 0.5)
-    )
-  
-  plots_list$item_info_plot <- p2
-  if (save_plots) ggplot2::ggsave(file.path(output_dir, "item_info.png"), p2, width = 14, height = 10)
-  if (display_plots) print(p2)
-}, error = function(e) message("   Item info plot skipped: ", e$message))
-
-tryCatch({
-  p3 <- ggmirt::testInfoPlot(fit, title = "Test Information")
-    plots_list$test_info_plot <- p3
-    if (save_plots) ggplot2::ggsave(file.path(output_dir, "test_info.png"), p3, width = 10, height = 6)
-    if (display_plots) print(p3)
-  }, error = function(e) message("   Test info plot skipped: ", e$message))
-
-  tryCatch({
-    p4 <- ggmirt::conRelPlot(fit, title = "Conditional Reliability")
-    plots_list$reliability_plot <- p4
-    if (save_plots) ggplot2::ggsave(file.path(output_dir, "reliability.png"), p4, width = 10, height = 6)
-    if (display_plots) print(p4)
-  }, error = function(e) message("   Reliability plot skipped: ", e$message))
-  
-  # Best items plot - display last to ensure it shows in viewer
-  if (exists('item_analysis') && !is.null(item_analysis) && nrow(item_analysis) > 0) {
     tryCatch({
-      p5 <- create_best_items_plot(item_analysis, results$item_labels)
-      plots_list$best_items_plot <- p5
-      if (save_plots) ggplot2::ggsave(file.path(output_dir, "best_items_plot.png"), p5, width = 12, height = 8)
-      if (display_plots) print(p5)
-    }, error = function(e) message("   Best items plot skipped: ", e$message))
+      p1 <- ggmirt::tracePlot(fit, title = "Item Probability Functions") + 
+        ggplot2::labs(color = "Response Categories")
+      plots_list$trace_plot <- p1
+      if (save_plots) ggplot2::ggsave(file.path(output_dir, "trace_plot.png"), p1, width = 12, height = 8)
+      if (display_plots) print(p1)
+    }, error = function(e) message("   Trace plot skipped: ", e$message))
+
+    tryCatch({
+      # Create custom item info plot with proper labels
+      item_names <- colnames(data)
+      theta_range <- seq(-4, 4, length.out = 200)
+      
+      # Calculate information for each item
+      plot_data <- data.frame()
+      for (i in seq_along(item_names)) {
+        item_name <- item_names[i]
+        
+        # Get full label
+        if (!is.null(results$item_labels) && item_name %in% names(results$item_labels)) {
+          full_label <- paste0(item_name, ': ', results$item_labels[item_name])
+        } else {
+          full_label <- item_name
+        }
+        
+        # Calculate information across theta range
+        info_values <- sapply(theta_range, function(theta) {
+          mirt::iteminfo(mirt::extract.item(fit, i), Theta = matrix(theta))
+        })
+        
+        item_data <- data.frame(
+          Theta = theta_range,
+          Information = as.numeric(info_values),
+          Item = full_label
+        )
+        plot_data <- rbind(plot_data, item_data)
+      }
+      
+      # Find maximum information value to set consistent Y-axis scale
+      max_info <- max(plot_data$Information, na.rm = TRUE)
+      
+      # Create the plot with fixed Y-axis
+      p2 <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Theta, y = Information)) +
+        ggplot2::geom_line(color = "steelblue", linewidth = 1) +
+        ggplot2::facet_wrap(~Item) +
+        ggplot2::scale_y_continuous(limits = c(0, max_info * 1.05)) +
+        ggplot2::labs(
+          title = "Item Information",
+          x = expression(theta),
+          y = "Information"
+        ) +
+        ggplot2::theme_minimal() +
+        ggplot2::theme(
+          strip.text = ggplot2::element_text(size = 9),
+          plot.title = ggplot2::element_text(hjust = 0.5)
+        )
+      
+      plots_list$item_info_plot <- p2
+      if (save_plots) ggplot2::ggsave(file.path(output_dir, "item_info.png"), p2, width = 14, height = 10)
+      if (display_plots) print(p2)
+    }, error = function(e) message("   Item info plot skipped: ", e$message))
+
+    tryCatch({
+      p3 <- ggmirt::testInfoPlot(fit, title = "Test Information")
+      plots_list$test_info_plot <- p3
+      if (save_plots) ggplot2::ggsave(file.path(output_dir, "test_info.png"), p3, width = 10, height = 6)
+      if (display_plots) print(p3)
+    }, error = function(e) message("   Test info plot skipped: ", e$message))
+
+    tryCatch({
+      p4 <- ggmirt::conRelPlot(fit, title = "Conditional Reliability")
+      plots_list$reliability_plot <- p4
+      if (save_plots) ggplot2::ggsave(file.path(output_dir, "reliability.png"), p4, width = 10, height = 6)
+      if (display_plots) print(p4)
+    }, error = function(e) message("   Reliability plot skipped: ", e$message))
+    
+    # Best items plot - display last to ensure it shows in viewer
+    if (exists('item_analysis') && !is.null(item_analysis) && nrow(item_analysis) > 0) {
+      tryCatch({
+        p5 <- create_best_items_plot(item_analysis, results$item_labels, fit)
+        plots_list$best_items_plot <- p5
+        if (save_plots) ggplot2::ggsave(file.path(output_dir, "best_items_plot.png"), p5, width = 12, height = 10)
+        if (display_plots) print(p5)
+      }, error = function(e) message("   Best items plot skipped: ", e$message))
+    }
+
+    # Store plots for return
+    results$plots <- plots_list
+
+    if (save_plots) {
+      message(sprintf("   Plots saved to %s/", output_dir))
+    }
+  } else {
+    message("\n7. Plots Skipped for Multidimensional Model")
+    message("   Standard ggmirt plots not supported for multidimensional models")
   }
-
-  # Store plots for return
-  results$plots <- plots_list
-
-  if (save_plots) {
-    message(sprintf("   Plots saved to %s/", output_dir))
-  }
-} else {
-  message("\n7. Plots Skipped for Multidimensional Model")
-  message("   Standard ggmirt plots not supported for multidimensional models")
-}
-
-  message("\n=== Analysis Complete ===\n")
 
   class(results) <- c("grm_analysis", "list")
   return(results)
-}
-
-#' Create Best Items Visualization Plot
-#' @param item_analysis Data frame with item analysis results
-#' @param item_labels Named vector of item labels
-#' @return ggplot object
-create_best_items_plot <- function(item_analysis, item_labels) {
-  
-  # Get the fitted model from the parent environment
-  fit <- get('fit', envir = parent.frame())
-  
-  # Find the three best items at each theta level
-  best_at_m2 <- item_analysis$Item[which.max(item_analysis$Info_theta_m2)]
-  best_at_0 <- item_analysis$Item[which(item_analysis$Info_theta_0 == max(item_analysis$Info_theta_0[item_analysis$Item != best_at_m2]))]
-  best_at_p2 <- item_analysis$Item[which(item_analysis$Info_theta_p2 == max(item_analysis$Info_theta_p2[!item_analysis$Item %in% c(best_at_m2, best_at_0)]))]
-  
-  # Create theta range for plotting
-  theta_range <- seq(-3, 3, length.out = 200)
-  
-  # Calculate actual item information curves
-  plot_data <- data.frame()
-  selected_items <- c(best_at_m2, best_at_0, best_at_p2)
-  
-  for(i in 1:length(selected_items)) {
-    item_name <- selected_items[i]
-    item_idx <- match(item_name, item_analysis$Item)
-    # Use full descriptive label from item_labels
-    full_label <- if (!is.null(item_labels) && item_name %in% names(item_labels)) {
-      paste0(item_name, ': ', item_labels[item_name])
-    } else {
-      paste0(item_name, ': ', item_analysis$Label[item_idx])
-    }
-    
-    # Calculate information using mirt
-    info_values <- sapply(theta_range, function(theta) {
-      tryCatch({
-        mirt::iteminfo(mirt::extract.item(fit, item_idx), Theta = matrix(theta))
-      }, error = function(e) 0)
-    })
-    
-    item_data <- data.frame(
-      Theta = theta_range,
-      Information = as.numeric(info_values),
-      Item = item_name,
-      Label = full_label
-    )
-    plot_data <- rbind(plot_data, item_data)
-  }
-  
-  # Create the plot
-  ggplot2::ggplot(plot_data, ggplot2::aes(x = Theta, y = Information, color = Label)) +
-    ggplot2::geom_line(linewidth = 1.5) +
-    ggplot2::geom_vline(xintercept = c(-2, 0, 2), linetype = 'dashed', alpha = 0.7, color = 'gray50') +
-    ggplot2::labs(title = 'Item Information Functions: Best Items at Different Ability Levels',
-                  subtitle = 'Actual information curves from fitted GRM model',
-                  x = 'Ability Level (θ)',
-                  y = 'Item Information',
-                  color = 'Items') +
-    ggplot2::theme_minimal() +
-    ggplot2::scale_x_continuous(breaks = c(-3, -2, -1, 0, 1, 2, 3), limits = c(-3, 3))
-}
-
-#' Extract item labels from data
-#' @param data The data frame with item responses
-#' @return Named vector of item labels
-extract_item_labels <- function(data) {
-  # Try multiple attribute locations where labels might be stored
-  labels <- NULL
-  
-  # Method 1: Try data frame level attributes
-  label_attrs <- c('variable.labels', 'labels', 'label')
-  for (attr_name in label_attrs) {
-    labels <- attr(data, attr_name)
-    if (!is.null(labels) && length(labels) > 0) break
-  }
-  
-  # Method 2: If no data frame level labels, check individual column labels
-  if (is.null(labels) || length(labels) == 0) {
-    col_names <- colnames(data)
-    labels <- character(length(col_names))
-    names(labels) <- col_names
-    
-    # Extract individual column labels
-    for (col in col_names) {
-      col_label <- attr(data[[col]], 'label')
-      if (!is.null(col_label) && nchar(col_label) > 0) {
-        labels[col] <- col_label
-      } else {
-        labels[col] <- paste('Item', col, '- Response scale item')
-      }
-    }
-  } else {
-    # Ensure labels have proper names if they exist at data frame level
-    if (is.null(names(labels))) {
-      names(labels) <- colnames(data)[1:length(labels)]
-    }
-  }
-  
-  # Method 3: Special handling for known datasets
-  if (all(names(labels) %in% c('Comfort', 'Work', 'Future', 'Benefit'))) {
-    labels <- c(
-      'Comfort' = 'Work to make life comfortable for family',
-      'Work' = 'Work permits development of abilities and talents', 
-      'Future' = 'Work benefits future of society',
-      'Benefit' = 'Work contributes to society'
-    )
-  }
-  
-  # Ensure we return labels for all columns in data
-  if (length(labels) != ncol(data)) {
-    missing_cols <- setdiff(colnames(data), names(labels))
-    for (col in missing_cols) {
-      col_label <- attr(data[[col]], 'label')
-      if (!is.null(col_label) && nchar(col_label) > 0) {
-        labels[col] <- col_label
-      } else {
-        labels[col] <- paste('Item', col, '- Response scale item')
-      }
-    }
-  }
-  
-  return(labels)
-}
-
-#' Calculate item information at specific theta
-#' @param fit Fitted mirt model
-#' @param item_index Item index
-#' @param theta Ability level
-#' @return Item information value
-.calc_item_info <- function(fit, item_index, theta) {
-  tryCatch({
-    mirt::iteminfo(mirt::extract.item(fit, item_index), Theta = matrix(theta))
-  }, error = function(e) 0)
-}
-
-#' Calculate empirical reliability
-#' @param theta_scores Matrix of theta scores and standard errors
-#' @return Empirical reliability coefficient
-empirical_rxx <- function(theta_scores) {
-  if (ncol(theta_scores) < 2) return(NA)
-  theta <- theta_scores[, 1]
-  se <- theta_scores[, 2]
-  var_theta <- var(theta, na.rm = TRUE)
-  mean_se2 <- mean(se^2, na.rm = TRUE)
-  return(var_theta / (var_theta + mean_se2))
 }
